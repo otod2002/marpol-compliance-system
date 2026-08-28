@@ -1,0 +1,14 @@
+{
+  "name": "marpol-compliance-system",
+  "version": "0.1.0",
+  "description": "Automated MARPOL Compliance Inspection System for Vessels and Port Reception Facilities in Nigeria",
+  "private": true,
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "test": "node tests/rules.test.js",
+    "db:migrate": "psql \"$DATABASE_URL\" -f db/migrations/001_init.sql",
+    "db:seed": "psql \"$DATABASE_URL\" -f db/seed/01_vocabularies.sql && psql \"$DATABASE_URL\" -f db/seed/02_instrument.sql",
+    "db:verify": "psql \"$DATABASE_URL\" -f db/verify.sql"
+  },
+  "license": "UNLICENSED"
+}

@@ -1,0 +1,5 @@
+psql "$DATABASE_URL" <<'SQL'
+CREATE ROLE app_role LOGIN PASSWORD 'change-me-before-deployment';
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_role;
+REVOKE UPDATE, DELETE ON audit_log FROM app_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_role;
