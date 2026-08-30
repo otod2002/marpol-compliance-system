@@ -4,6 +4,7 @@
  * buildApp() but nothing called it to actually listen. This is that missing
  * piece: standard Express bootstrapping, no project-specific logic.
  */
+require('dotenv').config();
 const { buildApp } = require('./app');
 
 const PORT = process.env.PORT || 4000;
