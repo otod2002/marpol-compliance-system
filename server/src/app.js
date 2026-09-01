@@ -37,6 +37,10 @@ function buildApp() {
   app.use('/api', require('./routes/inspections'));
   app.use('/api', require('./routes/waste'));
   app.use('/api', require('./routes/content'));
+  app.use('/api', require('./routes/cases'));
+  app.use('/api', require('./routes/portal'));
+  app.use('/api', require('./routes/reports'));
+  app.use('/api', require('./routes/users'));
 
   app.use((_req, res) => res.status(404).json({ error: 'not found' }));
 

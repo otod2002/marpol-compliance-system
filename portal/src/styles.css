@@ -1,0 +1,272 @@
+/* =====================================================================
+   MARPOL Compliance Portal — design tokens
+
+   Palette drawn from the subject's own world rather than a generic
+   government template: hull navy and marine blue from a vessel's paint
+   scheme, Nigerian green as the sovereign accent used with restraint,
+   buoy amber reserved for waste and variance states, chart paper for
+   the page ground.
+
+   Type: Barlow Condensed carries the display voice (the condensed
+   grotesque of transport and port signage); IBM Plex Sans carries body
+   copy; IBM Plex Mono carries every reference code, because an IMO
+   number or an MCI reference is read character by character.
+   ===================================================================== */
+
+:root {
+  --hull:    #0A1E2D;
+  --marine:  #12384C;
+  --flag:    #008751;
+  --flag-dk: #006B41;
+  --buoy:    #E8A33D;
+  --chart:   #F2F5F4;
+  --paper:   #FFFFFF;
+  --ink:     #0E1A1F;
+  --ink-2:   #4A5B63;
+  --line:    #D6DEDC;
+  --danger:  #B3261E;
+
+  --display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --body:    'IBM Plex Sans', system-ui, sans-serif;
+  --mono:    'IBM Plex Mono', ui-monospace, monospace;
+
+  --measure: 1160px;
+  --r: 3px;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--chart);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.wrap { max-width: var(--measure); margin: 0 auto; padding: 0 24px; }
+
+/* ---------------------------------------------------- masthead ----- */
+.masthead { background: var(--hull); color: #E8EEEC; border-bottom: 2px solid var(--flag); }
+.masthead-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 14px 24px; max-width: var(--measure); margin: 0 auto;
+}
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid var(--flag); position: relative; flex: none;
+}
+.brand-mark::after {
+  content: ''; position: absolute; left: -7px; right: -7px; top: 50%;
+  height: 2px; background: var(--flag); transform: translateY(-1px);
+}
+.brand-text { display: flex; flex-direction: column; line-height: 1.05; }
+.brand-name {
+  font-family: var(--display); font-weight: 700; font-size: 21px;
+  letter-spacing: .045em; text-transform: uppercase;
+}
+.brand-sub { font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: #7E9AA4; }
+
+.lang { display: flex; align-items: center; gap: 8px; }
+.lang select {
+  background: transparent; color: #E8EEEC; border: 1px solid #2A4A5C;
+  border-radius: var(--r); padding: 6px 8px; font-family: var(--body); font-size: 13px;
+}
+.lang select option { color: var(--ink); }
+
+/* ------------------------------------------------------- hero ------ */
+.hero {
+  background: linear-gradient(180deg, var(--marine) 0%, #16455C 100%);
+  color: #EAF1EF; padding: 52px 0 44px;
+}
+.hero h1 {
+  font-family: var(--display); font-weight: 600; text-transform: uppercase;
+  letter-spacing: .02em; font-size: clamp(30px, 5.2vw, 50px);
+  line-height: 1.02; margin: 0 0 14px; max-width: 20ch;
+}
+.hero h1 em { font-style: normal; color: var(--buoy); }
+.hero p { margin: 0; max-width: 62ch; color: #B9CED4; font-size: 17px; }
+
+/* --------------------------------------------- load-line divider --- */
+/* The Plimsoll mark: a vessel's permitted-state instrument, used here as
+   the structural divider between bands. One signature, kept quiet.      */
+.loadline { display: flex; align-items: center; gap: 0; margin: 0; padding: 0; }
+.loadline .bar { flex: 1; height: 1px; background: var(--line); }
+.loadline .disc {
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 1.5px solid var(--flag); flex: none; position: relative;
+}
+.loadline .disc::after {
+  content: ''; position: absolute; left: -6px; right: -6px; top: 50%;
+  height: 1.5px; background: var(--flag); transform: translateY(-1px);
+}
+.loadline.on-dark .bar { background: #2A4A5C; }
+
+/* ------------------------------------------------------ bands ------ */
+.band { padding: 44px 0; }
+.band-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 20px; }
+.band-head h2 {
+  font-family: var(--display); font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; font-size: 24px; margin: 0; white-space: nowrap;
+}
+.band-head .note { font-size: 14px; color: var(--ink-2); }
+
+/* ------------------------------------------------------ cards ------ */
+.grid { display: grid; gap: 16px; }
+.grid.two   { grid-template-columns: repeat(2, 1fr); }
+.grid.three { grid-template-columns: repeat(3, 1fr); }
+.grid.four  { grid-template-columns: repeat(4, 1fr); }
+
+.card {
+  display: block; background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 22px; text-decoration: none; color: inherit;
+  transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
+}
+.card:hover, .card:focus-visible {
+  border-color: var(--flag); transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(10, 30, 45, .09);
+}
+.card h3 {
+  font-family: var(--display); font-weight: 600; text-transform: uppercase;
+  letter-spacing: .04em; font-size: 20px; line-height: 1.1; margin: 0 0 8px;
+}
+.card p { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+
+.card.primary { background: var(--hull); border-color: var(--hull); color: #EAF1EF; padding: 28px; }
+.card.primary h3 { font-size: 26px; line-height: 1.05; color: #fff; }
+.card.primary p { color: #A9C2CA; font-size: 15.5px; }
+.card.primary:hover { border-color: var(--flag); }
+.card.primary .go {
+  display: inline-block; margin-top: 16px; font-family: var(--mono);
+  font-size: 12.5px; letter-spacing: .08em; color: var(--buoy); text-transform: uppercase;
+}
+
+.card.muted { background: transparent; }
+
+/* ------------------------------------------------------ forms ------ */
+.page { padding: 36px 0 60px; }
+.page h1 {
+  font-family: var(--display); font-weight: 600; text-transform: uppercase;
+  letter-spacing: .03em; font-size: 34px; margin: 0 0 6px;
+}
+.page .lede { color: var(--ink-2); margin: 0 0 24px; max-width: 68ch; }
+
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); padding: 26px; }
+.fieldset { border: 0; padding: 0; margin: 0 0 26px; }
+.fieldset legend {
+  font-family: var(--display); text-transform: uppercase; letter-spacing: .06em;
+  font-size: 15px; font-weight: 600; color: var(--marine);
+  padding: 0 0 10px; margin-bottom: 14px; border-bottom: 1px solid var(--line); width: 100%;
+}
+.fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 18px; }
+.field.span-2 { grid-column: span 2; }
+.field label {
+  display: block; font-size: 12.5px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-2); margin-bottom: 5px;
+}
+.field input, .field select, .field textarea {
+  width: 100%; padding: 10px 12px; font-family: var(--body); font-size: 15px;
+  border: 1px solid var(--line); border-radius: var(--r); background: #fff; color: var(--ink);
+}
+.field input.mono { font-family: var(--mono); letter-spacing: .04em; }
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: 2px solid var(--flag); outline-offset: 1px; border-color: var(--flag);
+}
+.field .hint { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; }
+.field .err { font-size: 12.5px; color: var(--danger); margin-top: 4px; font-weight: 500; }
+.check { display: flex; align-items: flex-start; gap: 9px; }
+.check input { width: auto; margin-top: 3px; }
+.check label { text-transform: none; letter-spacing: 0; font-size: 14.5px; color: var(--ink); font-weight: 400; }
+
+/* ---------------------------------------------------- buttons ------ */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  font-family: var(--display); text-transform: uppercase; letter-spacing: .06em;
+  font-size: 16px; font-weight: 600; padding: 11px 22px;
+  border-radius: var(--r); border: 1px solid transparent; background: var(--flag); color: #fff;
+}
+.btn:hover { background: var(--flag-dk); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn.ghost { background: transparent; border-color: var(--line); color: var(--ink); }
+.btn.ghost:hover { border-color: var(--marine); background: #fff; }
+.btn:focus-visible { outline: 2px solid var(--hull); outline-offset: 2px; }
+.actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* ---------------------------------------------------- results ------ */
+.receipt { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--flag); border-radius: var(--r); padding: 24px; }
+.receipt .ref {
+  font-family: var(--mono); font-size: 26px; font-weight: 500;
+  letter-spacing: .05em; color: var(--hull); margin: 6px 0 10px; word-break: break-all;
+}
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 7px 20px; margin: 14px 0 0; font-size: 15px; }
+.kv dt { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); font-weight: 600; }
+.kv dd { margin: 0; font-family: var(--mono); font-size: 14px; }
+
+.status {
+  display: inline-block; font-family: var(--mono); font-size: 12px; font-weight: 500;
+  letter-spacing: .08em; text-transform: uppercase; padding: 4px 10px;
+  border-radius: 100px; border: 1px solid;
+}
+.status.submitted { color: var(--marine); border-color: #9DB9C4; background: #EAF1F4; }
+.status.converted { color: var(--flag-dk); border-color: #9ACDB4; background: #E8F5EE; }
+.status.declined  { color: var(--danger); border-color: #E0A9A5; background: #FBEDEC; }
+
+.notice { border: 1px solid var(--line); border-left: 4px solid var(--buoy); background: #FDF7EC; padding: 14px 16px; border-radius: var(--r); font-size: 14.5px; }
+.notice.bad { border-left-color: var(--danger); background: #FBEDEC; }
+
+/* ---------------------------------------------------- annexes ------ */
+/* The six Annexes are a real, ordered set fixed by the Convention, so
+   numbering them encodes something true rather than decorating.        */
+.annexes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.annex { background: var(--paper); padding: 16px 14px; }
+.annex .num { font-family: var(--mono); font-size: 12px; color: var(--flag); letter-spacing: .1em; }
+.annex .name { font-family: var(--display); text-transform: uppercase; font-size: 16px; font-weight: 600; letter-spacing: .03em; margin-top: 3px; }
+.annex .desc { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+
+/* ----------------------------------------------------- footer ------ */
+.foot { background: var(--hull); color: #8FA9B2; padding: 34px 0 40px; margin-top: 40px; font-size: 13.5px; }
+.foot a { color: #C6D6DA; }
+.foot .cols { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 26px; margin-top: 22px; }
+.foot h4 { font-family: var(--display); text-transform: uppercase; letter-spacing: .07em; font-size: 14px; color: #E8EEEC; margin: 0 0 8px; }
+.foot ul { list-style: none; padding: 0; margin: 0; }
+.foot li { margin-bottom: 5px; }
+.foot .disclaimer { margin-top: 24px; padding-top: 18px; border-top: 1px solid #1D3A4A; font-size: 12.5px; color: #6E8A94; max-width: 78ch; }
+
+.back { display: inline-block; font-size: 13.5px; color: var(--marine); margin-bottom: 14px; }
+
+/* ------------------------------------------------- responsive ------ */
+@media (max-width: 900px) {
+  .grid.three, .grid.four { grid-template-columns: repeat(2, 1fr); }
+  .annexes { grid-template-columns: repeat(3, 1fr); }
+  .foot .cols { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 620px) {
+  .masthead-inner { flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px 20px 14px; }
+  .brand-name { font-size: 19px; }
+  .brand-sub { font-size: 9.5px; letter-spacing: .1em; }
+  .lang { width: 100%; justify-content: space-between; }
+  .lang select { flex: 0 0 auto; }
+  .wrap { padding: 0 20px; }
+  .grid.two, .grid.three, .grid.four { grid-template-columns: 1fr; }
+  .fields { grid-template-columns: 1fr; }
+  .field.span-2 { grid-column: span 1; }
+  .annexes { grid-template-columns: repeat(2, 1fr); }
+  .foot .cols { grid-template-columns: 1fr; }
+  .band-head { flex-direction: column; gap: 4px; align-items: flex-start; }
+  .hero { padding: 34px 0 30px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+  .card:hover { transform: none; }
+}
+
+.skip {
+  position: absolute; left: -9999px; background: var(--flag); color: #fff;
+  padding: 10px 16px; z-index: 10;
+}
+.skip:focus { left: 12px; top: 12px; }

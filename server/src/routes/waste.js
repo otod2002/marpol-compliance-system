@@ -218,4 +218,36 @@ router.get('/reconciliations/variances', authenticate, authorise(ROLES.SUPERVISO
     } catch (e) { return next(e); }
   });
 
+/**
+ * ADDED — NOT IN YOUR ORIGINAL FILES. WasteNote.jsx needs a way to open a
+ * specific consignment (it takes a wcnId), but nothing anywhere listed
+ * consignments so a waste team leader or facility receiver could find
+ * theirs in the first place — the same gap cases.js filled for officers'
+ * inspection work. "Mine" is defined the same way WasteNote.jsx's own
+ * ROLE_STAGE map defines who acts next: a team leader sees notes whose
+ * last recorded stage is BOOKED (theirs to collect); a facility receiver
+ * sees notes at COLLECTED or IN_TRANSIT (theirs to receive).
+ */
+router.get('/waste-notes', authenticate, async (req, res, next) => {
+  try {
+    const awaitingStage = {
+      WASTE_TEAM_LEADER: ['BOOKED'],
+      FACILITY_RECEIVER: ['COLLECTED', 'IN_TRANSIT'],
+    }[req.user.role];
+    if (!awaitingStage) return res.json([]); // no consignment queue for this role
+
+    const { rows } = await query(
+      `SELECT w.wcn_id, w.wcn_number, w.custody_stage, w.general_description,
+              w.containment_type, w.booked_date, v.vessel_name, v.imo_number
+         FROM waste_collection_note w
+         JOIN inspection i      ON i.inspection_id = w.inspection_id
+         JOIN compliance_case c ON c.case_id = i.case_id
+         JOIN vessel v          ON v.vessel_id = c.vessel_id
+        WHERE w.custody_stage = ANY($1::custody_stage_t[])
+        ORDER BY w.booked_date NULLS LAST, w.wcn_number
+        LIMIT 100`, [awaitingStage]);
+    return res.json(rows);
+  } catch (e) { return next(e); }
+});
+
 module.exports = router;

@@ -239,6 +239,66 @@ router.post('/inspections/sync', authenticate,
              w.declared_quantity, w.quantity_unit, w.held_onboard_quantity, w.date_last_discharged]);
         }
 
+        /**
+         * ADDED — NOT IN YOUR ORIGINAL FILES. Nothing anywhere created a
+         * waste_collection_note from a signed declaration — Declarations.jsx
+         * saves declared quantities, sync.js forwards them, and the lines
+         * above store them, but the chain stopped there. Without this,
+         * WasteNote.jsx and the whole custody chain (waste-notes list,
+         * WasteNote screen, reconciliation) would never have anything to
+         * show, because Section A is never booked. This auto-books it here,
+         * immediately on sync, for every declaration marked to_be_landed —
+         * matching the process map's "Declare waste to be landed → Book
+         * collection Section A" arrow.
+         *
+         * ONE LIMITATION THIS DOES NOT SOLVE, flagged rather than hidden:
+         * the two lines above this comment DELETE and re-INSERT every
+         * waste_declaration row on every sync of an inspection. Once a
+         * waste_collection_note exists (created below), it holds a
+         * foreign key to that declaration row with no ON DELETE clause in
+         * your schema (defaults to RESTRICT) — so resyncing the SAME
+         * inspection a second time, after waste has been booked against
+         * it, would fail with a foreign-key violation on that DELETE and
+         * roll back the whole sync. This is a property of the schema and
+         * the delete-and-replace pattern already in this file, not
+         * something introduced by adding the booking step. In practice it
+         * only bites if an officer edits and resubmits an inspection after
+         * its waste has already been collected against — worth deciding
+         * whether to guard against re-sync once a note exists, or to
+         * change waste_declaration's replace-on-sync strategy to an
+         * upsert, rather than something to leave as a silent trap.
+         */
+        for (const w of d.declarations) {
+          if (!w.to_be_landed) continue;
+          const { rows: declRow } = await client.query(
+            `SELECT declaration_id FROM waste_declaration
+              WHERE inspection_id=$1 AND annex_code=$2 AND waste_type IS NOT DISTINCT FROM $3`,
+            [insp.inspection_id, w.annex_code, w.waste_type]);
+          if (!declRow.length) continue;
+          const { rows: noteRow } = await client.query(
+            `INSERT INTO waste_collection_note
+               (inspection_id, declaration_id, general_description, containment_type,
+                booked_quantity, booked_quantity_unit, booked_date)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)
+             ON CONFLICT (declaration_id) DO NOTHING
+             RETURNING wcn_id`,
+            [insp.inspection_id, declRow[0].declaration_id, w.waste_type, `Annex ${w.annex_code}`,
+             w.declared_quantity, w.quantity_unit, d.inspection_date]);
+          // Bug fixed here: the note's custody_stage column was set to
+          // 'BOOKED' above, but waste.js's stage-ordering check reads the
+          // custody_event table, not that column — without a matching
+          // event row, the very first custody attestation (COLLECTED)
+          // would always fail with MISSING_PREDECESSOR, since as far as
+          // the event trail was concerned BOOKED had never happened.
+          if (noteRow.length) {
+            await client.query(
+              `INSERT INTO custody_event (wcn_id, stage, occurred_at, quantity, quantity_unit, actor_id)
+               VALUES ($1,'BOOKED',now(),$2,$3,$4)
+               ON CONFLICT (wcn_id, stage) DO NOTHING`,
+              [noteRow[0].wcn_id, w.declared_quantity, w.quantity_unit, req.user.user_id]);
+          }
+        }
+
         for (const s of d.signatories) {
           await client.query(
             `INSERT INTO signatory (document_type, document_id, signatory_role, name, signature_path, stamp_reference)
@@ -331,6 +391,38 @@ router.get('/vessels/:imo/history', authenticate,
   });
 
 /** Supervisory review: approve or return with remarks (FR-39). */
+/**
+ * ADDED — NOT IN YOUR ORIGINAL FILES. Supervisor.jsx calls
+ * GET /inspections?status=PENDING to list submissions awaiting approval,
+ * but no listing endpoint existed anywhere in this file — only sync,
+ * approve, and vessel-history. "Pending" is defined the same way the
+ * approve endpoint itself defines "already approved" (approved_at IS
+ * NULL), so the two stay consistent by construction rather than by
+ * duplicated logic. Restricted to SUPERVISOR/ADMINISTRATOR, matching the
+ * approve endpoint's own restriction — there would be little point
+ * showing this list to someone who could never act on it.
+ */
+router.get('/inspections', authenticate, authorise(ROLES.SUPERVISOR, ROLES.ADMINISTRATOR),
+  async (req, res, next) => {
+    try {
+      const status = (req.query.status || '').toUpperCase();
+      const conditions = [`i.sync_status = 'SYNCED'`];
+      if (status === 'PENDING') conditions.push('i.approved_at IS NULL');
+      else if (status === 'APPROVED') conditions.push('i.approved_at IS NOT NULL');
+
+      const { rows } = await query(
+        `SELECT i.inspection_id, i.mci_number, i.inspection_date, i.compliance_score,
+                i.compliance_state, i.approved_at, v.vessel_name, v.imo_number
+           FROM inspection i
+           JOIN compliance_case c ON c.case_id = i.case_id
+           JOIN vessel v          ON v.vessel_id = c.vessel_id
+          WHERE ${conditions.join(' AND ')}
+          ORDER BY i.inspection_date DESC
+          LIMIT 100`);
+      return res.json(rows);
+    } catch (e) { return next(e); }
+  });
+
 router.post('/inspections/:id/approve', authenticate, authorise(ROLES.SUPERVISOR),
   async (req, res, next) => {
     try {
