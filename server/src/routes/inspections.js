@@ -1,5 +1,7 @@
 'use strict';
 const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs/promises');
 const express = require('express');
 const { z } = require('zod');
 const { query, tx } = require('../db');
@@ -9,6 +11,7 @@ const {
 } = require('../../../shared/rules');
 
 const router = express.Router();
+const EVIDENCE_ROOT = process.env.EVIDENCE_ROOT || path.join(__dirname, '../../evidence');
 
 /* ==================== INSTRUMENT PACK PROVISIONING ================== */
 /**
@@ -360,6 +363,71 @@ router.post('/inspections/sync', authenticate,
         res.locals.auditNew = out.body;
       }
       return res.status(out.status).json(out.body);
+    } catch (e) { return next(e); }
+  });
+
+/* ============================ EVIDENCE ============================== */
+/**
+ * FR-25 : evidence upload.
+ *
+ * Photographs are transmitted SEPARATELY from the structured record, and
+ * after it, for the reason recorded as challenge 5 in Table 4.2: a weak
+ * connection should degrade the completeness of evidence transfer rather
+ * than the acceptance of the inspection itself. Each blob is acknowledged
+ * individually so a partial failure loses only the blobs not yet sent.
+ */
+const evidenceSchema = z.object({
+  item_id: z.string().uuid(),
+  filename: z.string().max(200).optional(),
+  content_type: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  data_base64: z.string().max(8_000_000),   // ~6 MB decoded; images are downscaled on the device
+});
+
+router.post('/inspections/:id/evidence', authenticate,
+  authorise(ROLES.COMPLIANCE_OFFICER, ROLES.SUPERVISOR),
+  async (req, res, next) => {
+    try {
+      const parsed = evidenceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'invalid payload', detail: parsed.error.issues });
+      }
+      const d = parsed.data;
+
+      const { rows: resp } = await query(
+        `SELECT response_id, evidence_path FROM inspection_response
+          WHERE inspection_id = $1 AND item_id = $2`, [req.params.id, d.item_id]);
+      if (!resp.length) return res.status(404).json({ error: 'no response for that item on this inspection' });
+
+      const buf = Buffer.from(d.data_base64, 'base64');
+      if (!buf.length) return res.status(400).json({ error: 'empty image' });
+
+      const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[d.content_type];
+      const dir = path.join(EVIDENCE_ROOT, req.params.id);
+      await fs.mkdir(dir, { recursive: true });
+      const name = `${crypto.randomUUID()}.${ext}`;
+      await fs.writeFile(path.join(dir, name), buf);
+
+      // Stored outside the web root; served only through an authorised route.
+      const rel = path.posix.join(req.params.id, name);
+      const existing = resp[0].evidence_path ? resp[0].evidence_path.split(',') : [];
+      await query(`UPDATE inspection_response SET evidence_path = $2 WHERE response_id = $1`,
+        [resp[0].response_id, [...existing, rel].join(',')]);
+
+      res.locals.auditEntity = 'inspection_response';
+      res.locals.auditEntityId = resp[0].response_id;
+      res.locals.auditAction = 'ATTACH_EVIDENCE';
+      return res.status(201).json({ path: rel, bytes: buf.length });
+    } catch (e) { return next(e); }
+  });
+
+/** Evidence is served only to authenticated staff, never from a public path. */
+router.get('/evidence/*', authenticate,
+  authorise(ROLES.COMPLIANCE_OFFICER, ROLES.SUPERVISOR, ROLES.ADMINISTRATOR),
+  async (req, res, next) => {
+    try {
+      const rel = req.params[0];
+      if (rel.includes('..')) return res.status(400).json({ error: 'invalid path' });
+      return res.sendFile(path.resolve(EVIDENCE_ROOT, rel));
     } catch (e) { return next(e); }
   });
 

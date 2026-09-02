@@ -4,10 +4,14 @@ import { fetchInstrumentPack } from './api.js';
 import { startAutoSync } from './sync.js';
 import SignIn from './pages/SignIn.jsx';
 import WorkQueue from './pages/WorkQueue.jsx';
+import Triage from './pages/Triage.jsx';
 import Inspection from './pages/Inspection.jsx';
+import Declarations from './pages/Declarations.jsx';
 import Sign from './pages/Sign.jsx';
 import Receipt from './pages/Receipt.jsx';
 import Admin from './pages/Admin.jsx';
+import WasteNote from './pages/WasteNote.jsx';
+import Supervisor from './pages/Supervisor.jsx';
 
 /**
  * DRAFT — NOT FROM YOUR ORIGINAL FILES. A plain hash router with an auth
@@ -20,9 +24,13 @@ import Admin from './pages/Admin.jsx';
 function currentRoute() {
   const h = window.location.hash.replace(/^#/, '');
   const parts = h.split('/').filter(Boolean);
+  if (parts[0] === 'triage') return { name: 'triage' };
   if (parts[0] === 'inspection' && parts[1]) return { name: 'inspection', localId: parts[1] };
+  if (parts[0] === 'declare' && parts[1]) return { name: 'declare', localId: parts[1] };
   if (parts[0] === 'sign' && parts[1]) return { name: 'sign', localId: parts[1] };
   if (parts[0] === 'receipt' && parts[1]) return { name: 'receipt', localId: parts[1] };
+  if (parts[0] === 'waste-note' && parts[1]) return { name: 'waste-note', wcnId: parts[1] };
+  if (parts[0] === 'supervisor') return { name: 'supervisor' };
   if (parts[0] === 'admin') return { name: 'admin' };
   return { name: 'queue' };
 }
@@ -77,8 +85,15 @@ export default function App() {
     );
   }
 
+  if (route.name === 'triage') {
+    if (user.role !== 'COMPLIANCE_OFFICER' && user.role !== 'SUPERVISOR') { go('/queue'); return null; }
+    return <Triage me={user} go={go} onSignedOut={() => { setUser(null); go('/'); }} />;
+  }
   if (route.name === 'inspection') {
     return <Inspection localId={route.localId} pack={pack} go={go} />;
+  }
+  if (route.name === 'declare') {
+    return <Declarations localId={route.localId} go={go} />;
   }
   if (route.name === 'sign') {
     return <Sign localId={route.localId} go={go} />;
@@ -86,11 +101,21 @@ export default function App() {
   if (route.name === 'receipt') {
     return <Receipt localId={route.localId} go={go} />;
   }
+  if (route.name === 'waste-note') {
+    return <WasteNote wcnId={route.wcnId} me={user} go={go} />;
+  }
+  if (route.name === 'supervisor') {
+    if (user.role !== 'SUPERVISOR' && user.role !== 'ADMINISTRATOR') { go('/queue'); return null; }
+    return <Supervisor me={user} go={go} onSignedOut={() => { setUser(null); go('/'); }} />;
+  }
   if (route.name === 'admin') {
     // Server-enforced too (routes/users.js requires ROLES.ADMINISTRATOR) —
     // this check only spares a non-admin the round trip and the 403.
     if (user.role !== 'ADMINISTRATOR') { go('/queue'); return null; }
     return <Admin me={user} go={go} onSignedOut={() => { setUser(null); go('/'); }} />;
   }
-  return <WorkQueue user={user} pack={pack} onOpen={id => go(`/inspection/${id}`)} onSignedOut={() => { setUser(null); go('/'); }} />;
+  return <WorkQueue user={user} pack={pack}
+    onOpen={id => go(`/inspection/${id}`)}
+    onOpenWasteNote={id => go(`/waste-note/${id}`)}
+    onSignedOut={() => { setUser(null); go('/'); }} />;
 }

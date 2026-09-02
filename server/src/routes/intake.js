@@ -119,6 +119,7 @@ router.get('/requests/:reference', async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT request_reference, vessel_name, port, status, submitted_at,
+              decline_reason,
               CASE WHEN case_id IS NOT NULL THEN TRUE ELSE FALSE END AS converted
          FROM inspection_request WHERE request_reference = $1`, [req.params.reference]);
     if (!rows.length) return res.status(404).json({ error: 'no request with that reference' });
@@ -196,6 +197,36 @@ router.post('/requests/:id/triage', authenticate,
         res.locals.auditNew = out.body;
       }
       return res.status(out.status).json(out.body);
+    } catch (e) { return next(e); }
+  });
+
+/**
+ * ADDED — NOT IN YOUR ORIGINAL FILES. Triage.jsx has a Decline button, but
+ * nothing anywhere handled it — /requests/:id/triage was the only action
+ * on a SUBMITTED request. The DECLINED status and decline_reason column
+ * already existed in your schema (001_init.sql), unused until now.
+ */
+router.post('/requests/:id/decline', authenticate,
+  authorise(ROLES.COMPLIANCE_OFFICER, ROLES.SUPERVISOR),
+  async (req, res, next) => {
+    try {
+      const reason = (req.body && req.body.reason || '').trim();
+      if (reason.length < 5) {
+        return res.status(400).json({ error: 'a reason is required, so the agent knows what to correct' });
+      }
+      const { rows } = await query(
+        `UPDATE inspection_request
+            SET status = 'DECLINED', decline_reason = $2, assigned_officer_id = $3
+          WHERE request_id = $1 AND case_id IS NULL
+          RETURNING request_id, status`,
+        [req.params.id, reason, req.user.user_id]);
+      if (!rows.length) {
+        return res.status(409).json({ error: 'request not found, or already converted' });
+      }
+      res.locals.auditEntity = 'inspection_request';
+      res.locals.auditEntityId = req.params.id;
+      res.locals.auditAction = 'DECLINE';
+      return res.json(rows[0]);
     } catch (e) { return next(e); }
   });
 

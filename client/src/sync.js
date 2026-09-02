@@ -10,7 +10,7 @@
  * and would defeat the audit capability the whole project rests on.
  */
 import {
-  pendingQueue, markQueue, dropQueue, getInspection, patchInspection, evidenceFor,
+  pendingQueue, markQueue, dropQueue, getInspection, patchInspection, evidenceFor, db,
 } from './db.js';
 import { post } from './api.js';
 
@@ -94,6 +94,16 @@ export async function releaseQueue() {
           await dropQueue(item.id);
           results.push({ local_id: item.local_id, outcome: body.outcome || 'ACCEPTED' });
           emit({ type: 'synced', local_id: item.local_id, mci_number: body.mci_number });
+
+          // Evidence is sent AFTER the record is accepted, and separately.
+          // A weak connection then degrades the completeness of evidence
+          // transfer rather than the acceptance of the inspection itself
+          // (Table 4.2, challenge 5). Each blob is acknowledged on its own,
+          // so a partial failure loses only what has not yet gone.
+          if (body.inspection_id && body.outcome !== 'DUPLICATE_DISCARDED') {
+            await uploadEvidence(item.local_id, body.inspection_id);
+          }
+
           continue;
         }
 
@@ -140,6 +150,43 @@ export function startAutoSync() {
   const timer = setInterval(attempt, 60000);
   attempt();
   return () => { window.removeEventListener('online', attempt); clearInterval(timer); };
+}
+
+/** Transmit each stored photograph, one acknowledged request at a time. */
+export async function uploadEvidence(local_id, inspection_id) {
+  const blobs = await db.evidence.where('local_id').equals(local_id).toArray();
+  let sent = 0;
+  for (const e of blobs) {
+    if (e.uploaded_at) continue;
+    try {
+      const data_base64 = await blobToBase64(e.blob);
+      const r = await post(`/inspections/${inspection_id}/evidence`, {
+        item_id: e.item_id,
+        filename: e.name || 'evidence.jpg',
+        content_type: e.blob.type || 'image/jpeg',
+        data_base64,
+      });
+      if (r.status === 201) {
+        await db.evidence.update(e.id, { uploaded_at: new Date().toISOString(), server_path: r.body.path });
+        sent += 1;
+        emit({ type: 'evidence', local_id, sent, total: blobs.length });
+      } else {
+        break;   // a rejection will not become an acceptance on retry
+      }
+    } catch {
+      break;     // connectivity gone; the rest stay for the next release
+    }
+  }
+  return sent;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = () => reject(new Error('could not read evidence'));
+    r.readAsDataURL(blob);
+  });
 }
 
 export { evidenceFor };

@@ -66,24 +66,37 @@ export default function Track({ go }) {
             <dt>Lodged</dt><dd>{new Date(result.submitted_at).toLocaleString()}</dd>
           </dl>
 
-          <ol style={{ listStyle: 'none', padding: 0, margin: '22px 0 0' }}>
-            {STAGES.map(([code, name, note], i) => {
-              const done = i <= reached;
-              return (
-                <li key={code} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '9px 0' }}>
-                  <span aria-hidden="true" style={{
-                    width: 13, height: 13, borderRadius: '50%', marginTop: 5, flex: 'none',
-                    border: `1.5px solid ${done ? 'var(--flag)' : 'var(--line)'}`,
-                    background: done ? 'var(--flag)' : 'transparent',
-                  }} />
-                  <span>
-                    <strong style={{ color: done ? 'var(--ink)' : 'var(--ink-2)' }}>{name}</strong>
-                    <span style={{ color: 'var(--ink-2)', fontSize: 14 }}> — {note}</span>
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
+          {/* Fixed here: DECLINED is a dead end, not a step on the way to
+              CONVERTED — showing it inside the linear stage list above
+              would misleadingly render it as "stuck at step 1" rather than
+              "this path ended." Shown separately, with the officer's
+              reason, matching Triage.jsx's own promise that "the agent can
+              see the reason when tracking it." */}
+          {result.status === 'DECLINED' ? (
+            <div className="notice bad" style={{ marginTop: 18 }}>
+              <strong>This request was declined.</strong>
+              {result.decline_reason && <div style={{ marginTop: 6 }}>{result.decline_reason}</div>}
+            </div>
+          ) : (
+            <ol style={{ listStyle: 'none', padding: 0, margin: '22px 0 0' }}>
+              {STAGES.map(([code, name, note], i) => {
+                const done = i <= reached;
+                return (
+                  <li key={code} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '9px 0' }}>
+                    <span aria-hidden="true" style={{
+                      width: 13, height: 13, borderRadius: '50%', marginTop: 5, flex: 'none',
+                      border: `1.5px solid ${done ? 'var(--flag)' : 'var(--line)'}`,
+                      background: done ? 'var(--flag)' : 'transparent',
+                    }} />
+                    <span>
+                      <strong style={{ color: done ? 'var(--ink)' : 'var(--ink-2)' }}>{name}</strong>
+                      <span style={{ color: 'var(--ink-2)', fontSize: 14 }}> — {note}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
 
           {result.converted && (
             <div className="notice" style={{ marginTop: 18 }}>

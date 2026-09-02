@@ -3,34 +3,47 @@ import { getInspection, patchInspection, enqueue } from '../db.js';
 import { releaseQueue } from '../sync.js';
 
 /**
- * DRAFT — NO MOCKUP EXISTS FOR THIS SCREEN. Unlike every other page in this
- * bundle, I have nothing to match this against — no pwa-sign.png was
- * provided, and Inspection.jsx's go(`/sign/${localId}`) call is the only
- * evidence this screen should exist at all. What it collects (voyage
- * particulars, a signatory name/role) is taken directly from the fields
- * server/src/routes/inspections.js's sync schema requires — so the DATA
- * this screen gathers is grounded in something real, but the LAYOUT, the
- * copy, and the overall flow are my invention, not yours. Treat this as
- * the roughest of all the drafts in this batch, and expect to redesign it
- * once you decide what this screen should actually look and read like.
+ * FIXED — this screen originally captured only ONE signature, chosen from
+ * a dropdown of three roles, before queuing the inspection. That was
+ * wrong: per the person's own domain requirement, this form is the
+ * binding record of work done, and it is not valid until BOTH the vessel
+ * (Master or Chief Officer) and NIMASA (the attending inspector) have
+ * signed it — not one or the other. Every other layer of the system was
+ * already built correctly for this: the `signatory` table keys on
+ * (document, role) so multiple roles genuinely mean multiple signatures,
+ * the server's sync handler already loops over every signatory it's
+ * given, and Receipt.jsx already renders one box per signature. This was
+ * the one screen not asking for both. No mockup exists for this screen
+ * (see the original note this replaced), so the two-block layout below is
+ * still a judgment call on presentation, not on the underlying
+ * requirement — that part is now correct.
  */
+const REQUIRED_ROLES = [
+  ['MASTER_OR_CHIEF_OFFICER', 'Master or Chief Officer', 'On behalf of the vessel'],
+  ['NIMASA_INSPECTOR', 'NIMASA Inspector', 'On behalf of the Agency'],
+];
+
 export default function Sign({ localId, go }) {
   const [insp, setInsp] = useState(null);
-  const [name, setName] = useState('');
-  const [role, setRole] = useState('MASTER_OR_CHIEF_OFFICER');
+  const [names, setNames] = useState({ MASTER_OR_CHIEF_OFFICER: '', NIMASA_INSPECTOR: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => { getInspection(localId).then(setInsp); }, [localId]);
 
+  const missing = REQUIRED_ROLES.filter(([role]) => !names[role].trim());
+
   async function submit(ev) {
     ev.preventDefault();
-    if (!name.trim()) { setError('Enter the signatory\u2019s name.'); return; }
+    if (missing.length) {
+      setError(`Both signatures are required before this form is valid. Missing: ${missing.map(m => m[1]).join(', ')}.`);
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
       await patchInspection(localId, {
-        signatories: [{ signatory_role: role, name: name.trim() }],
+        signatories: REQUIRED_ROLES.map(([role]) => ({ signatory_role: role, name: names[role].trim() })),
         status: 'COMPLETE',
       });
       await enqueue(localId);
@@ -53,27 +66,28 @@ export default function Sign({ localId, go }) {
       </a>
       <h1>Complete inspection</h1>
       <p className="lede">
-        {insp.vessel?.vessel_name} &middot; {insp.case_reference}. This queues the
-        inspection for synchronisation; it will send automatically once the
-        device is online.
+        {insp.vessel?.vessel_name} &middot; {insp.case_reference}. This form is not
+        valid until both parties sign. Once signed, it queues for
+        synchronisation and will send automatically once the device is online.
       </p>
 
       {error && <div className="notice bad" role="alert" style={{ marginBottom: 16 }}>{error}</div>}
 
       <form className="panel" onSubmit={submit} noValidate>
-        <div className="field">
-          <label htmlFor="signatory-role">Signing as</label>
-          <select id="signatory-role" value={role} onChange={e => setRole(e.target.value)}>
-            <option value="MASTER_OR_CHIEF_OFFICER">Master or chief officer</option>
-            <option value="NIMASA_INSPECTOR">NIMASA inspector</option>
-            <option value="MARPOL_COMPLIANCE_INSPECTOR">MARPOL compliance inspector</option>
-          </select>
-        </div>
-        <div className="field" style={{ marginTop: 14 }}>
-          <label htmlFor="signatory-name">Name</label>
-          <input id="signatory-name" value={name} onChange={e => setName(e.target.value)} required />
-        </div>
-        <button className="btn" type="submit" disabled={busy} style={{ marginTop: 18, width: '100%' }}>
+        {REQUIRED_ROLES.map(([role, label, sub], i) => (
+          <div key={role} style={i > 0 ? { marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--line)' } : undefined}>
+            <label htmlFor={`sig-${role}`} style={{ fontWeight: 600 }}>{label}</label>
+            <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 6 }}>{sub}</div>
+            <input
+              id={`sig-${role}`}
+              placeholder="Full name"
+              value={names[role]}
+              onChange={e => setNames(n => ({ ...n, [role]: e.target.value }))}
+              required
+            />
+          </div>
+        ))}
+        <button className="btn" type="submit" disabled={busy} style={{ marginTop: 22, width: '100%' }}>
           {busy ? 'Queuing…' : 'Sign and queue for sync'}
         </button>
       </form>

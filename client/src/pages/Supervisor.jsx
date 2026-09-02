@@ -1,13 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { get, post } from '../api.js';
+import { clearDevice } from '../db.js';
+
+const ROLE_LABEL = { SUPERVISOR: 'Supervisor', ADMINISTRATOR: 'Administrator' };
 
 /** Supervisory desk: submissions awaiting approval (FR-39) and consignments
  *  whose reconciled variance exceeded tolerance (FR-42). A definitive MCI
- *  report is issued only after approval, so this screen gates the report. */
-export default function Supervisor({ go }) {
+ *  report is issued only after approval, so this screen gates the report.
+ *
+ *  Added here: the masthead, same gap already found and fixed once in
+ *  Admin.jsx and again in Triage.jsx — this screen had none either, so
+ *  there was no way back to the queue or to sign out once here. No
+ *  mockup was provided for this specific screen, so the masthead follows
+ *  the established pattern from the screens that do have one, rather
+ *  than inventing a different layout for this page alone. */
+export default function Supervisor({ me, go, onSignedOut }) {
+  const [online, setOnline] = useState(navigator.onLine);
   const [pending, setPending] = useState([]);
   const [variances, setVariances] = useState([]);
   const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    const on = () => setOnline(true), off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+
+  async function signOut() {
+    await clearDevice();
+    onSignedOut();
+  }
 
   // Fixed here: get() throws on a non-2xx response and returns the parsed
   // body directly on success — it does not return a { ok, body } shape.
@@ -40,7 +63,22 @@ export default function Supervisor({ go }) {
   }
 
   return (
-    <div className="wrap page">
+    <>
+      <header className="masthead field">
+        <div className="masthead-inner">
+          <div className="brand-text">
+            <span className="brand-name">Marpol Field</span>
+            <span className="brand-sub">{me?.full_name} &middot; {ROLE_LABEL[me?.role] || me?.role}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className={`pill ${online ? 'on' : 'off'}`}>{online ? 'Online' : 'Offline'}</span>
+            <button className="btn ghost small" onClick={() => go('/queue')}>Queue</button>
+            <button className="btn ghost small" onClick={signOut}>Sign out</button>
+          </div>
+        </div>
+      </header>
+
+      <div className="wrap page">
       <h1>Supervisory desk</h1>
       <p className="lede">
         Approve submissions and review consignments whose declared and received
@@ -87,6 +125,7 @@ export default function Supervisor({ go }) {
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
