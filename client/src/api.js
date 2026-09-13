@@ -1,10 +1,28 @@
 /**
- * DRAFT — NOT FROM YOUR ORIGINAL FILES.
- * Missing from the uploaded bundle. The return shape of `post()` — an
- * object with .status and .body rather than throwing on non-2xx — is not
- * my choice: it's dictated by sync.js, which already reads res.status and
- * res.body to distinguish 200/201 (synced) from 409 (conflict) from other
- * 4xx (rejected). Written to match that contract exactly.
+ * API client for the field application.
+ *
+ * FIXED AT THE ROOT — every one of get()/post()/patch() now consistently
+ * returns { status, ok, body }. Earlier, get() alone threw on a non-2xx
+ * response and returned the raw body directly on success, while post()
+ * returned { status, body } with no .ok, and patch() returned
+ * { status, ok, body }. Three different shapes for what should be one
+ * contract. That inconsistency wasn't visible in isolation — each page
+ * that used only one of the three "worked" — but every single page
+ * uploaded across this project (WasteNote.jsx, Triage.jsx, Admin.jsx,
+ * Verify.jsx, Instruments.jsx, Documents.jsx) was written assuming
+ * `const r = await get(...); if (r.ok) ...`, which only ever matches
+ * this consistent shape. Rather than keep patching each new page to
+ * match get()'s throwing behaviour, this fixes get() itself, and the
+ * five pages that were patched to work around it are reverted to their
+ * original, correct form to match.
+ *
+ * fetchInstrumentPack() and fetchWorkQueue() are the two exceptions:
+ * App.jsx and WorkQueue.jsx already consume them assuming the OLD
+ * throw-and-return-raw-data behaviour (`await fetchInstrumentPack()`
+ * used directly as the pack; `.then(setRemote).catch(...)` on
+ * fetchWorkQueue()). Rather than touch those two files too, both
+ * functions translate the new get() contract back to that old shape
+ * internally, so nothing outside this file needs to change for them.
  */
 import { loadSession } from './db.js';
 
@@ -15,60 +33,84 @@ async function authHeader() {
   return s && s.token ? { Authorization: `Bearer ${s.token}` } : {};
 }
 
-export async function post(path, body) {
+async function call(path, { method = 'GET', body } = {}) {
   const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
-    body: JSON.stringify(body),
+    method,
+    headers: {
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(await authHeader()),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   let parsed = null;
-  try { parsed = await res.json(); } catch { /* no body */ }
-  return { status: res.status, body: parsed };
-}
-
-/**
- * Added — not in the uploaded bundle. Admin.jsx calls patch() for account
- * updates (deactivate/reactivate, role change, password reset); nothing
- * exported it. Matches post()'s { status, body } contract exactly, since
- * Admin.jsx's toggle() checks r.ok the way it checks r.status === 201 for
- * create() — see the fix in Admin.jsx itself for the other half of this.
- */
-export async function patch(path, body) {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
-    body: JSON.stringify(body),
-  });
-  let parsed = null;
-  try { parsed = await res.json(); } catch { /* no body */ }
+  try { parsed = await res.json(); } catch { /* no body, or not JSON */ }
   return { status: res.status, ok: res.ok, body: parsed };
 }
 
-export async function get(path) {
-  const res = await fetch(`${BASE}${path}`, { headers: await authHeader() });
-  let parsed = null;
-  try { parsed = await res.json(); } catch { /* no body */ }
-  if (!res.ok) {
-    const err = new Error((parsed && parsed.error) || `Request failed (${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-  return parsed;
-}
+export const get   = path => call(path);
+export const post  = (path, body) => call(path, { method: 'POST', body });
+export const patch = (path, body) => call(path, { method: 'PATCH', body });
 
 /** FR-... : sign in and receive a bearer token (server/src/routes/intake.js). */
 export async function login(email, password) {
-  const res = await post('/auth/login', { email, password });
-  if (res.status !== 200) {
-    const err = new Error((res.body && res.body.error) || 'Sign in failed');
-    err.status = res.status;
+  const r = await post('/auth/login', { email, password });
+  if (!r.ok) {
+    const err = new Error((r.body && r.body.error) || 'Sign in failed');
+    err.status = r.status;
     throw err;
   }
-  return res.body; // { token, user }
+  return r.body; // { token, user }
 }
 
-/** The instrument pack, cached by the service worker for offline use. */
-export const fetchInstrumentPack = () => get('/instrument/active');
+/**
+ * The instrument pack, cached by the service worker for offline use.
+ * Kept throw-on-error / return-raw-body-on-success so App.jsx's
+ * `await fetchInstrumentPack()` continues to work unchanged.
+ */
+export async function fetchInstrumentPack() {
+  const r = await get('/instrument/active');
+  if (!r.ok) {
+    const err = new Error((r.body && r.body.error) || `Request failed (${r.status})`);
+    err.status = r.status;
+    throw err;
+  }
+  return r.body;
+}
 
-/** Compliance cases awaiting an officer's attendance (server/src/routes/cases.js). */
-export const fetchWorkQueue = () => get('/cases');
+/**
+ * Compliance cases awaiting an officer's attendance (server/src/routes/cases.js).
+ * Kept as a plain promise that resolves to the array or rejects, so
+ * WorkQueue.jsx's `.then(setRemote).catch(...)` continues to work unchanged.
+ */
+export async function fetchWorkQueue() {
+  const r = await get('/cases');
+  if (!r.ok) {
+    const err = new Error((r.body && r.body.error) || `Request failed (${r.status})`);
+    err.status = r.status;
+    throw err;
+  }
+  return r.body;
+}
+
+/**
+ * Download an authenticated PDF.
+ *
+ * A plain anchor cannot be used: the endpoint requires a bearer token, and
+ * a browser navigation carries no Authorization header. The document is
+ * therefore fetched as a blob with the token attached and handed to the
+ * browser through an object URL, which also lets the filename be set.
+ */
+export async function downloadPdf(path, filename) {
+  const res = await fetch(`${BASE}${path}`, { headers: await authHeader() });
+  if (!res.ok) {
+    let msg = `Download failed (${res.status})`;
+    try { msg = (await res.json()).error || msg; } catch { /* not JSON */ }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}

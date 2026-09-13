@@ -1,10 +1,36 @@
 'use strict';
+const crypto = require('crypto');
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const { query } = require('../db');
 const { ROLES, authenticate, authorise } = require('../auth');
 
 const router = express.Router();
+
+/**
+ * ADDED — SECURITY FIX. Both PDF routes below previously carried only
+ * `authenticate` — confirming someone was signed in as SOMEONE, with no
+ * role check and no check that the document belonged to them. Any signed-in
+ * user of any role (a waste team leader, a facility receiver, anyone) could
+ * retrieve any report or waste note belonging to any vessel by guessing or
+ * incrementing a UUID. This closes that: a caller must either hold one of
+ * the listed staff roles, or present a valid, unexpired document token
+ * (migration 003, delivery.js) scoped to that specific document.
+ */
+function tokenOrRole(...roles) {
+  return async (req, res, next) => {
+    const raw = req.query.t;
+    if (raw) {
+      const h = crypto.createHash('sha256').update(String(raw)).digest('hex');
+      const { rows } = await query(
+        `SELECT inspection_id, wcn_id FROM document_access_token
+          WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()`, [h]);
+      if (rows.length) { req.documentToken = rows[0]; return next(); }
+      return res.status(410).json({ error: 'this link is not valid, or has expired' });
+    }
+    return authenticate(req, res, err => (err ? next(err) : authorise(...roles)(req, res, next)));
+  };
+}
 
 /**
  * DEFINITIVE MCI REPORT.
@@ -51,13 +77,16 @@ router.post('/inspections/:id/report', authenticate,
   });
 
 /** Stream the report as a PDF, built from stored data with nothing re-entered. */
-router.get('/reports/:id.pdf', authenticate, async (req, res, next) => {
+router.get('/reports/:id.pdf', tokenOrRole(ROLES.COMPLIANCE_OFFICER, ROLES.SUPERVISOR, ROLES.ADMINISTRATOR), async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT r.*, i.inspection_id FROM report r
          JOIN inspection i ON i.inspection_id = r.inspection_id
         WHERE r.report_id = $1`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'report not found' });
+    if (req.documentToken && req.documentToken.inspection_id !== rows[0].inspection_id) {
+      return res.status(403).json({ error: 'this link does not open that document' });
+    }
     const data = await gather(rows[0].inspection_id);
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -192,5 +221,198 @@ function render(doc, d) {
   doc.end();
   return doc;
 }
+
+/* ============ FR-45 : CONTROLLED WASTE COLLECTION NOTE ============= */
+/**
+ * The waste note reproduces the four custody stages and the reconciliation.
+ * Unlike the MCI report it does NOT wait on supervisory approval, because a
+ * consignment note is a record of custody transfer rather than a regulatory
+ * finding: the parties who signed for the waste are entitled to a copy of
+ * what they signed at the time they signed it.
+ */
+router.get('/waste-notes/:id/note.pdf',
+  tokenOrRole(ROLES.COMPLIANCE_OFFICER, ROLES.SUPERVISOR, ROLES.ADMINISTRATOR,
+             ROLES.WASTE_TEAM_LEADER, ROLES.FACILITY_RECEIVER),
+  async (req, res, next) => {
+  try {
+    const { rows: n } = await query(
+      `SELECT w.*, i.mci_number, i.inspection_date, v.vessel_name, v.imo_number, c.port
+         FROM waste_collection_note w
+         JOIN inspection i ON i.inspection_id = w.inspection_id
+         JOIN compliance_case c ON c.case_id = i.case_id
+         JOIN vessel v ON v.vessel_id = c.vessel_id
+        WHERE w.wcn_id = $1`, [req.params.id]);
+    if (!n.length) return res.status(404).json({ error: 'waste note not found' });
+    if (req.documentToken && req.documentToken.wcn_id !== n[0].wcn_id) {
+      return res.status(403).json({ error: 'this link does not open that document' });
+    }
+
+    const [ev, rec, sig, decl] = await Promise.all([
+      query(`SELECT ce.*, u.full_name, f.facility_name FROM custody_event ce
+               LEFT JOIN app_user u ON u.user_id = ce.actor_id
+               LEFT JOIN facility f ON f.facility_id = ce.facility_id
+              WHERE ce.wcn_id=$1 ORDER BY ce.occurred_at`, [req.params.id]),
+      query(`SELECT * FROM reconciliation WHERE wcn_id=$1`, [req.params.id]),
+      query(`SELECT * FROM signatory WHERE document_type='WASTE_COLLECTION_NOTE' AND document_id=$1`, [req.params.id]),
+      query(`SELECT * FROM waste_declaration WHERE declaration_id=$1`, [n[0].declaration_id]),
+    ]);
+
+    const note = n[0], r = rec.rows[0];
+    const doc = new PDFDocument({ size: 'A4', margin: 46 });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="WCN-${note.wcn_number}.pdf"`);
+    doc.pipe(res);
+
+    const H = t => doc.moveDown(0.7).fontSize(11).fillColor('#008751').text(t.toUpperCase())
+                      .moveTo(46, doc.y + 2).lineTo(549, doc.y + 2).strokeColor('#D6DEDC').stroke()
+                      .moveDown(0.4).fillColor('#0E1A1F').fontSize(10);
+    const kv = (k, v) => doc.fontSize(9.5).fillColor('#4A5B63').text(`${k}  `, { continued: true })
+                            .fillColor('#0E1A1F').text(String(v ?? '—'));
+
+    doc.fontSize(17).fillColor('#0A1E2D').text('CONTROLLED WASTE COLLECTION AND TRANSFER NOTE');
+    doc.fontSize(9).fillColor('#4A5B63')
+       .text('Nigerian Maritime Administration and Safety Agency  ·  Offshore Waste Reception Facility');
+    doc.moveDown(0.5).fontSize(14).fillColor('#0A1E2D').text(`Note ${note.wcn_number}`);
+    doc.fontSize(9.5).fillColor('#4A5B63').text(`Refer to MCI form number ${note.mci_number}`);
+
+    H('Originator');
+    kv('Vessel', note.vessel_name); kv('IMO number', note.imo_number);
+    kv('Port', note.port); kv('Zone', note.zone); kv('Inspection date', note.inspection_date);
+
+    H('Section A — description and booking');
+    kv('Waste to be collected', note.waste_to_be_collected ? 'Yes' : 'No');
+    kv('Description', note.general_description);
+    kv('Containment', note.containment_type);
+    kv('Specified quantity', note.specified_quantity_text);
+    kv('Booked', `${note.booked_date || '—'} ${note.booked_time || ''} by ${note.booked_means || '—'}`);
+    if (decl.rows[0]) {
+      kv('Declared at inspection',
+        `${decl.rows[0].declared_quantity ?? '—'} ${decl.rows[0].quantity_unit || ''} (Annex ${decl.rows[0].annex_code})`);
+    }
+
+    H('Sections B, C and D — chain of custody');
+    for (const e of ev.rows) {
+      kv(e.stage, `${e.quantity ?? '—'} ${e.quantity_unit || ''}  ·  ${new Date(e.occurred_at).toLocaleString()}` +
+        `${e.location ? `  ·  ${e.location}` : ''}${e.facility_name ? `  ·  ${e.facility_name}` : ''}` +
+        `${e.means_of_conveyance ? `  ·  ${e.means_of_conveyance}` : ''}${e.full_name ? `  ·  ${e.full_name}` : ''}`);
+    }
+    if (!ev.rows.length) doc.fontSize(10).text('No stage has yet been attested.');
+
+    H('Reconciliation');
+    if (!r) doc.fontSize(10).text('The chain is incomplete; no reconciliation has been computed.');
+    else {
+      kv('Declared', r.declared_quantity); kv('Booked', r.booked_quantity);
+      kv('Collected', r.collected_quantity); kv('Received', r.received_quantity);
+      kv('Variance', `${r.variance_value ?? '—'}${r.variance_percent != null ? ` (${r.variance_percent}%)` : ''}`);
+      kv('Outcome', r.variance_flag);
+      if (r.variance_flag === 'BEYOND_TOLERANCE') {
+        doc.moveDown(0.3).fontSize(10).fillColor('#B3261E')
+           .text('The quantity received differs from the quantity declared by more than the configured tolerance. Raised for supervisory review.');
+        doc.fillColor('#0E1A1F');
+      }
+      if (r.variance_flag === 'UNIT_MISMATCH') {
+        doc.moveDown(0.3).fontSize(10).fillColor('#B3261E')
+           .text('The recorded units cannot be compared without a density the system does not hold. No variance has been computed.');
+        doc.fillColor('#0E1A1F');
+      }
+    }
+
+    H('Signatures');
+    if (!sig.rows.length) doc.fontSize(10).text('None recorded.');
+    sig.rows.forEach(s2 => kv(s2.signatory_role.replace(/_/g, ' '),
+      `${s2.name}  ·  ${new Date(s2.signed_at).toLocaleString()}`));
+
+    doc.moveDown(1).fontSize(8).fillColor('#4A5B63')
+       .text(`Generated ${new Date().toLocaleString()} from stored custody data. This note records the transfer of ship-generated waste; it does not certify the vessel or the facility and carries no regulatory force.`,
+         { width: 503 });
+    doc.end();
+  } catch (e) { return next(e); }
+});
+
+/* ====================== DOCUMENT REGISTER =========================== */
+/**
+ * A register of every document the system can produce, so that documents
+ * can be found rather than only generated. Three states distinguished
+ * deliberately, since the reason a document is unavailable determines what
+ * the viewer should do about it: an unsynchronised record needs the
+ * officer's device to reconnect, an unapproved one needs a supervisor, and
+ * an approved one needs nothing at all.
+ */
+router.get('/documents', authenticate,
+  authorise(ROLES.SUPERVISOR, ROLES.ADMINISTRATOR, ROLES.COMPLIANCE_OFFICER),
+  async (req, res, next) => {
+    try {
+      const imo = req.query.imo || null;
+      const { rows: inspections } = await query(
+        `SELECT i.inspection_id, i.mci_number, i.inspection_date, i.compliance_state,
+                i.sync_status, i.approved_at,
+                v.vessel_name, v.imo_number, c.port,
+                r.report_id, r.generated_at,
+                CASE
+                  WHEN r.report_id IS NOT NULL THEN 'AVAILABLE'
+                  WHEN i.sync_status <> 'SYNCED' THEN 'NOT_SYNCHRONISED'
+                  WHEN i.approved_at IS NULL     THEN 'AWAITING_APPROVAL'
+                  ELSE 'READY_TO_GENERATE'
+                END AS document_state
+           FROM inspection i
+           JOIN compliance_case c ON c.case_id = i.case_id
+           JOIN vessel v ON v.vessel_id = c.vessel_id
+           LEFT JOIN report r ON r.inspection_id = i.inspection_id
+                             AND r.report_type = 'MCI_REPORT'
+          WHERE ($1::text IS NULL OR v.imo_number = $1)
+          ORDER BY i.inspection_date DESC, i.mci_number DESC
+          LIMIT 200`, [imo]);
+
+      const { rows: notes } = await query(
+        `SELECT w.wcn_id, w.wcn_number, w.custody_stage, w.booked_date,
+                i.mci_number, v.vessel_name, v.imo_number,
+                rc.variance_flag, rc.variance_percent
+           FROM waste_collection_note w
+           JOIN inspection i ON i.inspection_id = w.inspection_id
+           JOIN compliance_case c ON c.case_id = i.case_id
+           JOIN vessel v ON v.vessel_id = c.vessel_id
+           LEFT JOIN reconciliation rc ON rc.wcn_id = w.wcn_id
+          WHERE ($1::text IS NULL OR v.imo_number = $1)
+          ORDER BY w.wcn_number DESC LIMIT 200`, [imo]);
+
+      return res.json({ inspections, waste_notes: notes });
+    } catch (e) { return next(e); }
+  });
+
+/**
+ * Generate the definitive report if it does not yet exist, and return its
+ * identifier either way. This exists so that Documents.jsx need not know
+ * whether a report has already been generated before asking for one.
+ */
+router.post('/inspections/:id/report/ensure', authenticate,
+  authorise(ROLES.SUPERVISOR, ROLES.ADMINISTRATOR),
+  async (req, res, next) => {
+    try {
+      const { rows: existing } = await query(
+        `SELECT report_id FROM report
+          WHERE inspection_id=$1 AND report_type='MCI_REPORT'
+          ORDER BY generated_at DESC LIMIT 1`, [req.params.id]);
+      if (existing.length) {
+        return res.json({ report_id: existing[0].report_id, created: false });
+      }
+      const data = await gather(req.params.id);
+      if (!data) return res.status(404).json({ error: 'inspection not found' });
+      if (!data.inspection.approved_at) {
+        return res.status(409).json({
+          error: 'inspection not approved',
+          reason: 'AWAITING_APPROVAL',
+          note: 'A definitive report is issued only after supervisory approval. The Master holds the provisional receipt until then.',
+        });
+      }
+      const { rows } = await query(
+        `INSERT INTO report (inspection_id, report_type, generated_by, export_payload)
+         VALUES ($1,'MCI_REPORT',$2,$3) RETURNING report_id`,
+        [req.params.id, req.user.user_id, JSON.stringify(exportPayload(data))]);
+      res.locals.auditEntity = 'report';
+      res.locals.auditEntityId = rows[0].report_id;
+      res.locals.auditAction = 'GENERATE';
+      return res.status(201).json({ report_id: rows[0].report_id, created: true });
+    } catch (e) { return next(e); }
+  });
 
 module.exports = router;

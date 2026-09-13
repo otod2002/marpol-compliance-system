@@ -14,7 +14,7 @@ import { fetchWorkQueue, get } from '../api.js';
  * have waste custody stages to attest — without this they would sign in
  * to an empty queue with no way to reach WasteNote.jsx at all.
  */
-export default function WorkQueue({ user, pack, onOpen, onOpenWasteNote, onSignedOut }) {
+export default function WorkQueue({ user, pack, go, onOpen, onOpenWasteNote, onSignedOut }) {
   const [onDevice, setOnDevice] = useState([]);
   const [remote, setRemote] = useState(null);
   const [notes, setNotes] = useState(null);
@@ -60,7 +60,13 @@ export default function WorkQueue({ user, pack, onOpen, onOpenWasteNote, onSigne
       template_id: pack.template.template_id,
       template_version: pack.template.version,
     });
-    onOpen(rec.local_id);
+    // Fixed here: this used to jump straight to the checklist. Cargo.jsx
+    // (FR-18) is meant to run first — cargo type bears on which Annexes
+    // apply — but nothing routed a newly created inspection there. Only
+    // affects a fresh start; resuming an in-progress inspection from "On
+    // this device" still goes straight to onOpen, since cargo would
+    // already be captured for those.
+    go(`/cargo/${rec.local_id}`);
   }
 
   async function signOut() {
@@ -80,6 +86,15 @@ export default function WorkQueue({ user, pack, onOpen, onOpenWasteNote, onSigne
             <span className={`pill ${online ? 'on' : 'off'}`}>{online ? 'Online' : 'Offline'}</span>
             {(user?.role === 'COMPLIANCE_OFFICER' || user?.role === 'SUPERVISOR') && (
               <button className="btn ghost small" onClick={() => (window.location.hash = '#/triage')}>New requests</button>
+            )}
+            {(user?.role === 'COMPLIANCE_OFFICER' || user?.role === 'SUPERVISOR' || user?.role === 'ADMINISTRATOR') && (
+              <button className="btn ghost small" onClick={() => (window.location.hash = '#/documents')}>Documents</button>
+            )}
+            {(user?.role === 'SUPERVISOR' || user?.role === 'ADMINISTRATOR') && (
+              <button className="btn ghost small" onClick={() => (window.location.hash = '#/outbox')}>Outbox</button>
+            )}
+            {(user?.role === 'COMPLIANCE_OFFICER' || user?.role === 'SUPERVISOR' || user?.role === 'ADMINISTRATOR') && (
+              <button className="btn ghost small" onClick={() => (window.location.hash = '#/enquiries')}>Enquiries</button>
             )}
             {user?.role === 'ADMINISTRATOR' && (
               <button className="btn ghost small" onClick={() => (window.location.hash = '#/admin')}>Accounts</button>

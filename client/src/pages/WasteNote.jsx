@@ -31,16 +31,9 @@ export default function WasteNote({ wcnId, me, go }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  // Fixed here: get() throws on a non-2xx response and returns the parsed
-  // body directly on success — it does not return a { ok, body } shape.
-  // Same contract mismatch already fixed in Admin.jsx; see that file's
-  // comment for why.
   const load = async () => {
-    try {
-      setData(await get(`/waste-notes/${wcnId}`));
-    } catch (e) {
-      setMsg({ bad: true, text: e.message });
-    }
+    const r = await get(`/waste-notes/${wcnId}`);
+    if (r.ok) setData(r.body); else setMsg({ bad: true, text: r.body.error });
   };
   useEffect(() => { load(); }, [wcnId]);
 

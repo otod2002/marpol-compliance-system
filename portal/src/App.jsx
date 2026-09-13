@@ -10,6 +10,7 @@ import Enquiry from './pages/Enquiry.jsx';
 import Conventions from './pages/Conventions.jsx';
 import Guide from './pages/Guide.jsx';
 import OfficerSignIn from './pages/OfficerSignIn.jsx';
+import DocumentRedeem from './pages/DocumentRedeem.jsx';
 
 /**
  * DRAFT — NOT FROM YOUR ORIGINAL FILES.
@@ -67,6 +68,22 @@ export default function App() {
     if (currentPath() === nextPath) { setPath(nextPath); return; }
     window.location.hash = `#${nextPath}`;
   };
+
+  // ADDED — the only parameterised route this router needs. delivery.js
+  // composes links shaped like #/document/:token; everything else in this
+  // app is a flat, exact-match path, so this is handled as a single special
+  // case rather than pulling in a routing library for one route.
+  const docMatch = path.match(/^\/document\/(.+)$/);
+  if (docMatch) {
+    return (
+      <>
+        <a className="skip" href="#main">Skip to content</a>
+        <Masthead go={go} />
+        <main id="main"><DocumentRedeem go={go} params={{ token: docMatch[1] }} /></main>
+        <Footer go={go} />
+      </>
+    );
+  }
 
   const Page = ROUTES[path] || Placeholder;
 

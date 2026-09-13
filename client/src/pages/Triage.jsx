@@ -42,16 +42,9 @@ export default function Triage({ me, go, onSignedOut }) {
     onSignedOut();
   }
 
-  // Fixed here: get() throws on a non-2xx response and returns the parsed
-  // body directly on success — it does not return a { ok, body } shape.
-  // Same contract mismatch already fixed in Admin.jsx/WasteNote.jsx/
-  // Supervisor.jsx; see Admin.jsx's comment for why.
   const load = async () => {
-    try {
-      setRows(await get('/requests?status=SUBMITTED'));
-    } catch (e) {
-      setMsg({ bad: true, text: e.message });
-    }
+    const r = await get('/requests?status=SUBMITTED');
+    if (r.ok) setRows(r.body); else setMsg({ bad: true, text: r.body.error });
   };
   useEffect(() => { load(); }, []);
 

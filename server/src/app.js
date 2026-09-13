@@ -9,7 +9,15 @@ function buildApp() {
   const app = express();
   app.set('trust proxy', 1);
   app.use(helmet());
-  app.use(cors({ origin: process.env.CORS_ORIGIN || true }));
+  // Supports one or more comma-separated origins, e.g.
+  // "https://marpol-portal.onrender.com,https://marpol-field.onrender.com"
+  // — needed once the portal and field app are deployed as two separate
+  // sites, both calling this same server. Falls back to allowing any
+  // origin (the previous behaviour) if CORS_ORIGIN is unset.
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    : true;
+  app.use(cors({ origin: allowedOrigins }));
   app.use(express.json({ limit: '10mb' }));   // bounded: evidence streams separately
 
   // NFR-09 : unauthenticated surfaces are rate limited per originating
@@ -41,6 +49,9 @@ function buildApp() {
   app.use('/api', require('./routes/portal'));
   app.use('/api', require('./routes/reports'));
   app.use('/api', require('./routes/users'));
+  app.use('/api', require('./routes/admin'));
+  app.use('/api', require('./routes/delivery'));
+  app.use('/api', require('./routes/enquiries'));
 
   app.use((_req, res) => res.status(404).json({ error: 'not found' }));
 

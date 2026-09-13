@@ -49,16 +49,9 @@ export default function Admin({ me, go, onSignedOut }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  // Fixed here: get() throws on a non-2xx response and returns the parsed
-  // body directly on success — it does not return a { ok, body } shape the
-  // way post()/patch() do. The original draft assumed the latter, which
-  // would have left load() always reporting an error, even on success.
   const load = async () => {
-    try {
-      setUsers(await get('/users'));
-    } catch (e) {
-      setMsg({ bad: true, text: e.message });
-    }
+    const r = await get('/users');
+    if (r.ok) setUsers(r.body); else setMsg({ bad: true, text: r.body.error });
   };
   useEffect(() => { load(); }, []);
 

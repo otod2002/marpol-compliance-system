@@ -51,7 +51,12 @@ export default function Sign({ localId, go }) {
       // Route to the provisional receipt (Receipt.jsx) rather than straight
       // back to the queue — the Master needs that document handed over
       // before the officer leaves the vessel, per Receipt.jsx's own header.
-      go(`/receipt/${localId}`);
+      // FIXED — this used to jump straight to Receipt.jsx (just the MCI
+      // document), but Handover.jsx now exists specifically to hand over
+      // BOTH documents (report + waste note where applicable) and explain
+      // that both are provisional. Receipt.jsx itself is unchanged and is
+      // still where Handover's "Open" button for document 1 leads.
+      go(`/handover/${localId}`);
     } catch (err) {
       setError(err.message);
     } finally { setBusy(false); }
