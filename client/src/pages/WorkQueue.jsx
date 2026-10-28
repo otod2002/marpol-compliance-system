@@ -33,7 +33,17 @@ export default function WorkQueue({ user, pack, go, onOpen, onOpenWasteNote, onS
 
   useEffect(() => {
     if (isWasteRole) {
-      get('/waste-notes').then(setNotes).catch(e => setError(e.message));
+      // FIXED — this assumed get() throws on error and resolves directly
+      // to the array on success. That contract was deliberately changed
+      // at the root a couple of steps back (every get()/post()/patch()
+      // now consistently returns {status, ok, body}), and every other
+      // call site that made this same assumption was reverted to match —
+      // this one call, added earlier for the waste custody chain, was
+      // missed. setNotes was receiving the whole {status, ok, body}
+      // object instead of the array, so notes.map() failed outright.
+      get('/waste-notes').then(r => {
+        if (r.ok) setNotes(r.body); else setError(r.body?.error || `Request failed (${r.status})`);
+      });
     } else {
       fetchWorkQueue().then(setRemote).catch(e => setError(e.message));
     }

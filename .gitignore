@@ -1,2 +1,14 @@
-
 node_modules/
+
+# secrets — never commit a connection string or a signing key
+.env
+.env.*
+!.env.example
+
+# build output and the development service worker
+client/dist/
+client/dev-dist/
+portal/dist/
+
+# evidence written at runtime
+server/evidence/

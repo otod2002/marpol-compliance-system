@@ -32,19 +32,23 @@ export default function Supervisor({ me, go, onSignedOut }) {
     onSignedOut();
   }
 
-  // Fixed here: get() throws on a non-2xx response and returns the parsed
-  // body directly on success — it does not return a { ok, body } shape.
-  // Same contract mismatch already fixed in Admin.jsx; see that file's
-  // comment for why. Promise.allSettled rather than Promise.all so that
-  // one endpoint failing (e.g. a non-supervisor somehow reaching this
-  // screen) doesn't blank out the other panel too.
+  // FIXED — this assumed get() could reject (hence Promise.allSettled,
+  // and reading p.value/v.value as the array directly). That contract was
+  // corrected at the root: get() now always resolves to {status, ok, body}
+  // and never rejects for an HTTP-level error. Promise.allSettled always
+  // "fulfilled" under that contract regardless of whether the request
+  // actually succeeded, and p.value/v.value were the whole wrapper object,
+  // not the array — hence pending.map() failing outright. Plain
+  // Promise.all is enough now; each result's .ok/.body is checked directly,
+  // and one endpoint failing no longer blanks the other panel, same intent
+  // as before, just checked the right way.
   const load = async () => {
-    const [p, v] = await Promise.allSettled([
+    const [p, v] = await Promise.all([
       get('/inspections?status=PENDING'),
       get('/reconciliations/variances'),
     ]);
-    if (p.status === 'fulfilled') setPending(p.value); else setMsg({ bad: true, text: p.reason.message });
-    if (v.status === 'fulfilled') setVariances(v.value); else setMsg({ bad: true, text: v.reason.message });
+    if (p.ok) setPending(p.body); else setMsg({ bad: true, text: p.body?.error || `Request failed (${p.status})` });
+    if (v.ok) setVariances(v.body); else setMsg({ bad: true, text: v.body?.error || `Request failed (${v.status})` });
   };
   useEffect(() => { load(); }, []);
 

@@ -112,11 +112,20 @@ router.post('/waste-notes/:id/custody', authenticate, authoriseCustodyStage,
         const have = new Set(recorded.map(r => r.stage));
         const idx = STAGE_ORDER.indexOf(d.stage);
         const predecessor = STAGE_ORDER[idx - 1];
-        if (predecessor && !have.has(predecessor) && predecessor !== 'IN_TRANSIT') {
+        // IN_TRANSIT is an optional stage: a receiver may attest RECEIVED
+        // straight after COLLECTED with no one separately recording
+        // IN_TRANSIT. When the predecessor named by STAGE_ORDER is the
+        // optional IN_TRANSIT stage and it was skipped, the real
+        // predecessor to enforce is the one before it (COLLECTED) --
+        // not no check at all.
+        const effectivePredecessor = (predecessor === 'IN_TRANSIT' && !have.has('IN_TRANSIT'))
+          ? STAGE_ORDER[idx - 2]
+          : predecessor;
+        if (effectivePredecessor && !have.has(effectivePredecessor) && effectivePredecessor !== 'IN_TRANSIT') {
           return { status: 409, body: {
             error: 'custody stage out of sequence',
             reason: 'MISSING_PREDECESSOR',
-            required: predecessor } };
+            required: effectivePredecessor } };
         }
         // -- single attestation (TC-18); the constraint also enforces this
         if (have.has(d.stage)) {

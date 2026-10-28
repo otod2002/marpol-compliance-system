@@ -3,11 +3,19 @@
   "version": "0.1.0",
   "description": "Automated MARPOL Compliance Inspection System for Vessels and Port Reception Facilities in Nigeria",
   "private": true,
-  "engines": { "node": ">=22.12" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "dotenv": "^16.4.5",
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  },
   "scripts": {
     "test": "node tests/rules.test.js",
-    "db:migrate": "psql \"$DATABASE_URL\" -f db/migrations/001_init.sql",
+    "test:e2e": "node tests/e2e.test.js",
+    "test:offline": "node scripts/run-offline-suite.js",
+    "db:migrate": "psql \"$DATABASE_URL\" -f db/migrations/001_init.sql && psql \"$DATABASE_URL\" -f db/migrations/002_sync_columns.sql && psql \"$DATABASE_URL\" -f db/migrations/003_outbox.sql",
+    "db:grants": "bash grants.sql",
     "db:seed": "psql \"$DATABASE_URL\" -f db/seed/01_vocabularies.sql && psql \"$DATABASE_URL\" -f db/seed/02_instrument.sql",
     "db:verify": "psql \"$DATABASE_URL\" -f db/verify.sql"
   },
