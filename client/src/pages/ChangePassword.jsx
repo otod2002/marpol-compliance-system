@@ -46,20 +46,26 @@ export default function ChangePassword({ me, onChanged, onSignedOut }) {
       {error && <div className="notice bad" role="alert" style={{ marginBottom: 16 }}>{error}</div>}
 
       <form className="panel" onSubmit={submit} noValidate>
-        <label htmlFor="cur">Temporary password</label>
-        <input id="cur" type="password" autoComplete="current-password"
-          value={current} onChange={e => setCurrent(e.target.value)} required />
-
-        <label htmlFor="new" style={{ marginTop: 14 }}>New password</label>
-        <input id="new" type="password" autoComplete="new-password"
-          value={next} onChange={e => setNext(e.target.value)} required />
-        <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 4 }}>
-          At least 12 characters.
+        <div className="field">
+          <label htmlFor="cur">Temporary password</label>
+          <input id="cur" type="password" autoComplete="current-password"
+            value={current} onChange={e => setCurrent(e.target.value)} required />
         </div>
 
-        <label htmlFor="again" style={{ marginTop: 14 }}>New password again</label>
-        <input id="again" type="password" autoComplete="new-password"
-          value={again} onChange={e => setAgain(e.target.value)} required />
+        <div className="field" style={{ marginTop: 14 }}>
+          <label htmlFor="new">New password</label>
+          <input id="new" type="password" autoComplete="new-password"
+            value={next} onChange={e => setNext(e.target.value)} required />
+          <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 4 }}>
+            At least 12 characters.
+          </div>
+        </div>
+
+        <div className="field" style={{ marginTop: 14 }}>
+          <label htmlFor="again">New password again</label>
+          <input id="again" type="password" autoComplete="new-password"
+            value={again} onChange={e => setAgain(e.target.value)} required />
+        </div>
 
         <button className="btn" type="submit" disabled={busy} style={{ marginTop: 20, width: '100%' }}>
           {busy ? 'Saving…' : 'Set password and continue'}
