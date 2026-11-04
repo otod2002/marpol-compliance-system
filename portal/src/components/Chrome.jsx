@@ -100,7 +100,8 @@ export function Footer({ go }) {
         <p className="disclaimer">
           This system supports inspection and record-keeping. Nothing produced here
           certifies a vessel or facility or carries regulatory force. Built as a
-          Professional Master&rsquo;s Project, Miva Open University.
+          Professional Master&rsquo;s Project by Omotope Tekena Dean, Miva Open
+          University, 2026. Source at github.com/otod2002/marpol-compliance-system.
         </p>
       </div>
     </footer>

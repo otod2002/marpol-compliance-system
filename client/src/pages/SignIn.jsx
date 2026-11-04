@@ -50,6 +50,12 @@ export default function SignIn({ onSignedIn }) {
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+
+      <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 18, lineHeight: 1.5 }}>
+        MARPOL Compliance Inspection System. A Professional Master of Information
+        Technology project by Omotope Tekena Dean, Miva Open University, 2026.
+        Source at github.com/otod2002/marpol-compliance-system.
+      </p>
     </div>
   );
 }

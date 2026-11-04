@@ -219,7 +219,7 @@ function render(doc, d) {
   });
 
   doc.moveDown(1).fontSize(8).fillColor('#4A5B63')
-     .text(`Generated ${new Date().toLocaleString()} from stored inspection data. Approved ${i.approved_at ? new Date(i.approved_at).toLocaleString() : '—'}. This report supports inspection and record-keeping; it does not certify the vessel and carries no regulatory force.`,
+     .text(`Generated ${new Date().toLocaleString()} from stored inspection data. Approved ${i.approved_at ? new Date(i.approved_at).toLocaleString() : '—'}. This report supports inspection and record-keeping; it does not certify the vessel and carries no regulatory force. Produced by the MARPOL Compliance Inspection System, a Professional Master of Information Technology project by Omotope Tekena Dean, Miva Open University, 2026.`,
        { width: 503 });
 
   doc.end();
@@ -353,7 +353,7 @@ router.get('/waste-notes/:id/note.pdf',
     });
 
     doc.moveDown(1).fontSize(8).fillColor('#4A5B63')
-       .text(`Generated ${new Date().toLocaleString()} from stored custody data. This note records the transfer of ship-generated waste; it does not certify the vessel or the facility and carries no regulatory force.`,
+       .text(`Generated ${new Date().toLocaleString()} from stored custody data. This note records the transfer of ship-generated waste; it does not certify the vessel or the facility and carries no regulatory force. Produced by the MARPOL Compliance Inspection System, a Professional Master of Information Technology project by Omotope Tekena Dean, Miva Open University, 2026.`,
          { width: 503 });
     doc.end();
   } catch (e) { return next(e); }
