@@ -1,22 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { getInspection, patchInspection, enqueue } from '../db.js';
 import { releaseQueue } from '../sync.js';
+import SignaturePad from '../components/SignaturePad.jsx';
 
 /**
- * FIXED — this screen originally captured only ONE signature, chosen from
- * a dropdown of three roles, before queuing the inspection. That was
- * wrong: per the person's own domain requirement, this form is the
- * binding record of work done, and it is not valid until BOTH the vessel
- * (Master or Chief Officer) and NIMASA (the attending inspector) have
- * signed it — not one or the other. Every other layer of the system was
- * already built correctly for this: the `signatory` table keys on
- * (document, role) so multiple roles genuinely mean multiple signatures,
- * the server's sync handler already loops over every signatory it's
- * given, and Receipt.jsx already renders one box per signature. This was
- * the one screen not asking for both. No mockup exists for this screen
- * (see the original note this replaced), so the two-block layout below is
- * still a judgment call on presentation, not on the underlying
- * requirement — that part is now correct.
+ * Sign-off. The form is the binding record of work done aboard, and it is
+ * not valid until both the vessel (Master or Chief Officer) and NIMASA (the
+ * attending inspector) have signed it.
+ *
+ * Each party gives two things: a printed name and a written signature drawn
+ * on the screen. The name is what appears in the record and in any later
+ * search; the drawn mark is what the Master expects to make on a form they
+ * are handed, and is stored alongside the name in signatory.signature_path.
+ * Both are captured on the device with no network, which is the condition
+ * the whole field application is built for.
  */
 const REQUIRED_ROLES = [
   ['MASTER_OR_CHIEF_OFFICER', 'Master or Chief Officer', 'On behalf of the vessel'],
@@ -26,36 +23,39 @@ const REQUIRED_ROLES = [
 export default function Sign({ localId, go }) {
   const [insp, setInsp] = useState(null);
   const [names, setNames] = useState({ MASTER_OR_CHIEF_OFFICER: '', NIMASA_INSPECTOR: '' });
+  const [marks, setMarks] = useState({ MASTER_OR_CHIEF_OFFICER: null, NIMASA_INSPECTOR: null });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => { getInspection(localId).then(setInsp); }, [localId]);
 
-  const missing = REQUIRED_ROLES.filter(([role]) => !names[role].trim());
+  const missingNames = REQUIRED_ROLES.filter(([role]) => !names[role].trim());
+  const missingMarks = REQUIRED_ROLES.filter(([role]) => !marks[role]);
 
   async function submit(ev) {
     ev.preventDefault();
-    if (missing.length) {
-      setError(`Both signatures are required before this form is valid. Missing: ${missing.map(m => m[1]).join(', ')}.`);
+    if (missingNames.length || missingMarks.length) {
+      const parts = [];
+      if (missingNames.length) parts.push(`name for ${missingNames.map(m => m[1]).join(' and ')}`);
+      if (missingMarks.length) parts.push(`signature for ${missingMarks.map(m => m[1]).join(' and ')}`);
+      setError(`This form is not valid until both parties sign. Missing: ${parts.join('; ')}.`);
       return;
     }
     setError(null);
     setBusy(true);
     try {
       await patchInspection(localId, {
-        signatories: REQUIRED_ROLES.map(([role]) => ({ signatory_role: role, name: names[role].trim() })),
+        signatories: REQUIRED_ROLES.map(([role]) => ({
+          signatory_role: role,
+          name: names[role].trim(),
+          signature_path: marks[role],
+        })),
         status: 'COMPLETE',
       });
       await enqueue(localId);
       releaseQueue().catch(() => {}); // best-effort immediate attempt; retried by startAutoSync otherwise
-      // Route to the provisional receipt (Receipt.jsx) rather than straight
-      // back to the queue — the Master needs that document handed over
-      // before the officer leaves the vessel, per Receipt.jsx's own header.
-      // FIXED — this used to jump straight to Receipt.jsx (just the MCI
-      // document), but Handover.jsx now exists specifically to hand over
-      // BOTH documents (report + waste note where applicable) and explain
-      // that both are provisional. Receipt.jsx itself is unchanged and is
-      // still where Handover's "Open" button for document 1 leads.
+      // Handover.jsx hands over BOTH documents (report and waste note where
+      // applicable) and explains that both are provisional.
       go(`/handover/${localId}`);
     } catch (err) {
       setError(err.message);
@@ -65,7 +65,7 @@ export default function Sign({ localId, go }) {
   if (!insp) return <div className="wrap center">Loading…</div>;
 
   return (
-    <div className="wrap page" style={{ maxWidth: 520 }}>
+    <div className="wrap page" style={{ maxWidth: 560 }}>
       <a className="back" href="#" onClick={e => { e.preventDefault(); go(`/inspection/${localId}`); }}>
         &larr; Back to inspection
       </a>
@@ -80,7 +80,7 @@ export default function Sign({ localId, go }) {
 
       <form className="panel" onSubmit={submit} noValidate>
         {REQUIRED_ROLES.map(([role, label, sub], i) => (
-          <div key={role} style={i > 0 ? { marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--line)' } : undefined}>
+          <div key={role} style={i > 0 ? { marginTop: 24, paddingTop: 24, borderTop: '1px solid var(--line)' } : undefined}>
             <label htmlFor={`sig-${role}`} style={{ fontWeight: 600 }}>{label}</label>
             <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 6 }}>{sub}</div>
             <input
@@ -90,9 +90,15 @@ export default function Sign({ localId, go }) {
               onChange={e => setNames(n => ({ ...n, [role]: e.target.value }))}
               required
             />
+            <SignaturePad
+              label="Signature"
+              hint="Sign with a finger or a stylus."
+              value={marks[role]}
+              onChange={data => setMarks(m => ({ ...m, [role]: data }))}
+            />
           </div>
         ))}
-        <button className="btn" type="submit" disabled={busy} style={{ marginTop: 22, width: '100%' }}>
+        <button className="btn" type="submit" disabled={busy} style={{ marginTop: 24, width: '100%' }}>
           {busy ? 'Queuing…' : 'Sign and queue for sync'}
         </button>
       </form>

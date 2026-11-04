@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { get, post } from '../api.js';
 import { reconcileCustody } from '@shared/rules.mjs';
+import SignaturePad from '../components/SignaturePad.jsx';
 
 /**
  * THE WASTE CUSTODY CHAIN  (FR-34, FR-40, FR-41, FR-42)
@@ -27,7 +28,7 @@ const ROLE_STAGE = {
 
 export default function WasteNote({ wcnId, me, go }) {
   const [data, setData] = useState(null);
-  const [form, setForm] = useState({ quantity: '', quantity_unit: 'CBM', location: '', means_of_conveyance: '', signatory_name: '' });
+  const [form, setForm] = useState({ quantity: '', quantity_unit: 'CBM', location: '', means_of_conveyance: '', signatory_name: '', signature_path: null });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -62,6 +63,7 @@ export default function WasteNote({ wcnId, me, go }) {
       location: form.location || null,
       means_of_conveyance: form.means_of_conveyance || null,
       signatory_name: form.signatory_name || me.full_name,
+      signature_path: form.signature_path,
       waste_type: note.general_description || null,
     });
     setBusy(false);
@@ -148,6 +150,12 @@ export default function WasteNote({ wcnId, me, go }) {
                 <input id="sg" value={form.signatory_name}
                   placeholder={me.full_name}
                   onChange={e => setForm({ ...form, signatory_name: e.target.value })} />
+                <SignaturePad
+                  label="Signature"
+                  hint="The person attesting this stage signs here, on the device, at the point of transfer."
+                  value={form.signature_path}
+                  height={130}
+                  onChange={data => setForm(f => ({ ...f, signature_path: data }))} />
               </div>
             </div>
 

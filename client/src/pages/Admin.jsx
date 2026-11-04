@@ -83,6 +83,25 @@ export default function Admin({ me, go, onSignedOut }) {
     else setMsg({ bad: true, text: r.body.error });
   }
 
+  // An officer who forgets a password would otherwise need a developer with
+  // database credentials to get back in. The reset is an administrator
+  // action like any other: the server records it in the audit log as
+  // RESET_PASSWORD against the account, so the change has an author and a
+  // time even though the administrator never learns the old password.
+  async function resetPassword(u) {
+    const pw = prompt(
+      `New password for ${u.email}.\n\nAt least 12 characters. Give it to the account holder directly and ask them to change it.`,
+      '');
+    if (pw === null) return;
+    if (pw.trim().length < 12) {
+      setMsg({ bad: true, text: 'The password must be at least 12 characters. Nothing was changed.' });
+      return;
+    }
+    const r = await patch(`/users/${u.user_id}`, { password: pw.trim() });
+    if (r.ok) setMsg({ text: `Password reset for ${u.email}. The change is recorded in the audit log.` });
+    else setMsg({ bad: true, text: r.body.error || 'Could not reset the password.' });
+  }
+
   const active = users.filter(u => u.is_active);
   const inactive = users.filter(u => !u.is_active);
 
@@ -176,11 +195,17 @@ export default function Admin({ me, go, onSignedOut }) {
               {u.user_id === me.user_id && <span className="badge grey" style={{ marginLeft: 8 }}>You</span>}
               <div className="ref">{u.email} · {ROLE_LABEL[u.role_name] || u.role_name}{u.zone ? ` · ${u.zone}` : ''}</div>
             </div>
-            <button className="chip" onClick={() => toggle(u)}
-              disabled={u.user_id === me.user_id}
-              title={u.user_id === me.user_id ? 'You cannot deactivate your own account' : ''}>
-              Deactivate
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="chip" onClick={() => resetPassword(u)}
+                title="Set a new password for this account">
+                Reset password
+              </button>
+              <button className="chip" onClick={() => toggle(u)}
+                disabled={u.user_id === me.user_id}
+                title={u.user_id === me.user_id ? 'You cannot deactivate your own account' : ''}>
+                Deactivate
+              </button>
+            </div>
           </div>
         ))}
       </div>

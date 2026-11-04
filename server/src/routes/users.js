@@ -107,7 +107,11 @@ router.patch('/users/:id', authenticate, authorise(ROLES.ADMINISTRATOR), async (
     }
     if (d.zone !== undefined) { vals.push(d.zone); sets.push(`zone = $${vals.length}`); }
     if (d.is_active !== undefined) { vals.push(d.is_active); sets.push(`is_active = $${vals.length}`); }
-    if (d.password) { vals.push(await hashPassword(d.password)); sets.push(`password_hash = $${vals.length}`); }
+    if (d.password) {
+      vals.push(await hashPassword(d.password)); sets.push(`password_hash = $${vals.length}`);
+      // The holder must replace an administrator-set password before working.
+      sets.push('must_change_password = TRUE');
+    }
     if (!sets.length) return res.status(400).json({ error: 'nothing to change' });
 
     const { rows } = await query(

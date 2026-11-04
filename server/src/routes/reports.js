@@ -211,8 +211,12 @@ function render(doc, d) {
   }
 
   H('Signatures');
-  d.signatories.forEach(s => kv(s.signatory_role.replace(/_/g, ' '),
-    `${s.name}  ·  ${new Date(s.signed_at).toLocaleString()}`));
+  d.signatories.forEach(s => {
+    kv(s.signatory_role.replace(/_/g, ' '),
+       `${s.name}  ·  ${new Date(s.signed_at).toLocaleString()}`);
+    drawSignature(doc, s);
+    doc.moveDown(0.3);
+  });
 
   doc.moveDown(1).fontSize(8).fillColor('#4A5B63')
      .text(`Generated ${new Date().toLocaleString()} from stored inspection data. Approved ${i.approved_at ? new Date(i.approved_at).toLocaleString() : '—'}. This report supports inspection and record-keeping; it does not certify the vessel and carries no regulatory force.`,
@@ -220,6 +224,28 @@ function render(doc, d) {
 
   doc.end();
   return doc;
+}
+
+/**
+ * Draw a captured signature, where one was given, above the signatory's
+ * printed name. The client stores the mark as a PNG data URL in
+ * signature_path, so the bytes travel with the inspection and need no file
+ * store; anything that is not a PNG data URL (a future file path, say) is
+ * ignored and only the name is printed, which is what the paper form does
+ * when a signature box is left blank.
+ */
+function drawSignature(doc, s) {
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(s.signature_path || '');
+  if (!m) return false;
+  const top = doc.y;
+  try {
+    doc.image(Buffer.from(m[1], 'base64'), doc.page.margins.left, top, { fit: [170, 40] });
+    doc.y = top + 44;             // place the cursor clear of the mark
+    return true;
+  } catch {
+    doc.y = top;                  // a corrupt mark must not cost the report
+    return false;
+  }
 }
 
 /* ============ FR-45 : CONTROLLED WASTE COLLECTION NOTE ============= */
@@ -319,8 +345,12 @@ router.get('/waste-notes/:id/note.pdf',
 
     H('Signatures');
     if (!sig.rows.length) doc.fontSize(10).text('None recorded.');
-    sig.rows.forEach(s2 => kv(s2.signatory_role.replace(/_/g, ' '),
-      `${s2.name}  ·  ${new Date(s2.signed_at).toLocaleString()}`));
+    sig.rows.forEach(s2 => {
+      kv(s2.signatory_role.replace(/_/g, ' '),
+        `${s2.name}  ·  ${new Date(s2.signed_at).toLocaleString()}`);
+      drawSignature(doc, s2);
+      doc.moveDown(0.3);
+    });
 
     doc.moveDown(1).fontSize(8).fillColor('#4A5B63')
        .text(`Generated ${new Date().toLocaleString()} from stored custody data. This note records the transfer of ship-generated waste; it does not certify the vessel or the facility and carries no regulatory force.`,

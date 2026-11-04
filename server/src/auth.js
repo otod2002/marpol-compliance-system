@@ -35,7 +35,11 @@ const verifyPassword = (hash, pw) => argon2.verify(hash, pw).catch(() => false);
 
 function issueToken(user) {
   return jwt.sign(
-    { user_id: user.user_id, role: user.role_name, zone: user.zone || null },
+    {
+      user_id: user.user_id, role: user.role_name, zone: user.zone || null,
+      // Carried in the token so the restriction costs no query per request.
+      must_change: !!user.must_change_password,
+    },
     JWT_SECRET,
     { expiresIn: TOKEN_TTL }
   );
@@ -57,6 +61,17 @@ function authenticate(req, res, next) {
   if (!token) return res.status(401).json({ error: 'authentication required' });
   try {
     req.user = jwt.verify(token, JWT_SECRET);
+    // An account whose password an administrator has reset may do nothing
+    // but read its own identity and set a new password. The restriction is
+    // enforced here, at the API, so it holds for any client.
+    if (req.user.must_change
+        && !(req.method === 'POST' && req.path === '/auth/change-password')
+        && !(req.method === 'GET' && req.path === '/auth/me')) {
+      return res.status(403).json({
+        error: 'your password was reset by an administrator and must be changed before you continue',
+        reason: 'PASSWORD_CHANGE_REQUIRED',
+      });
+    }
     return next();
   } catch {
     return res.status(401).json({ error: 'invalid or expired token' });

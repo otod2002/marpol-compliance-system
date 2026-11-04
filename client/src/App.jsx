@@ -3,6 +3,7 @@ import { loadSession, loadPack, savePack } from './db.js';
 import { fetchInstrumentPack } from './api.js';
 import { startAutoSync } from './sync.js';
 import SignIn from './pages/SignIn.jsx';
+import ChangePassword from './pages/ChangePassword.jsx';
 import WorkQueue from './pages/WorkQueue.jsx';
 import Triage from './pages/Triage.jsx';
 import Cargo from './pages/Cargo.jsx';
@@ -85,6 +86,26 @@ export default function App() {
   const go = path => { window.location.hash = `#${path}`; };
 
   if (user === undefined) return <div className="wrap center">Loading…</div>;
+
+  // An administrator has reset this password. The server refuses every
+  // other route until it is replaced, so there is nothing else to show.
+  if (user && user.must_change_password) {
+    return (
+      <ChangePassword
+        me={user}
+        onChanged={async u => {
+          setUser(u);
+          try {
+            const fresh = await fetchInstrumentPack();
+            await savePack(fresh);
+            setPack(fresh);
+          } catch { /* the queue screen retries the pack */ }
+          go('/queue');
+        }}
+        onSignedOut={() => { setUser(null); go('/'); }}
+      />
+    );
+  }
 
   if (!user) {
     return (

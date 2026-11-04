@@ -3,7 +3,7 @@ const express = require('express');
 const { z } = require('zod');
 const { query, tx } = require('../db');
 const {
-  ROLES, verifyPassword, issueToken, recordAttempt,
+  ROLES, verifyPassword, hashPassword, issueToken, recordAttempt,
   authenticate, authorise,
 } = require('../auth');
 
@@ -25,7 +25,8 @@ router.post('/auth/login', async (req, res, next) => {
     const ua = req.headers['user-agent'];
 
     const { rows } = await query(
-      `SELECT u.user_id, u.full_name, u.password_hash, u.zone, u.is_active, r.role_name
+      `SELECT u.user_id, u.full_name, u.password_hash, u.zone, u.is_active,
+              u.must_change_password, r.role_name
          FROM app_user u JOIN role r ON r.role_id = u.role_id
         WHERE lower(u.email) = lower($1)`, [email]);
 
@@ -44,12 +45,76 @@ router.post('/auth/login', async (req, res, next) => {
     await recordAttempt({ userId: user.user_id, email, ip, ua, ok: true });
     return res.json({
       token: issueToken(user),
-      user: { user_id: user.user_id, full_name: user.full_name, role: user.role_name, zone: user.zone },
+      user: {
+        user_id: user.user_id, full_name: user.full_name, role: user.role_name,
+        zone: user.zone, must_change_password: user.must_change_password,
+      },
     });
   } catch (e) { return next(e); }
 });
 
 router.get('/auth/me', authenticate, (req, res) => res.json({ user: req.user }));
+
+const changePasswordSchema = z.object({
+  current_password: z.string().min(1),
+  new_password: z.string().min(12),
+});
+
+/**
+ * Set your own password, and only where an administrator has reset it.
+ *
+ * Outside that case passwords are an administrator function, which is the
+ * policy this system is built on: accounts are issued by the Agency, not
+ * self-registered. What this route closes is the window a reset opens, in
+ * which the administrator knows a working credential for someone else.
+ * The holder proves they hold the temporary password, chooses their own,
+ * and receives a fresh token without the restriction.
+ */
+router.post('/auth/change-password', authenticate, async (req, res, next) => {
+  try {
+    const parsed = changePasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'the new password must be at least 12 characters' });
+    }
+    if (!req.user.must_change) {
+      return res.status(403).json({
+        error: 'passwords are set by an administrator; ask an administrator to reset yours',
+        reason: 'ADMINISTRATOR_ONLY',
+      });
+    }
+    const { rows } = await query(
+      `SELECT u.user_id, u.full_name, u.password_hash, u.zone, r.role_name
+         FROM app_user u JOIN role r ON r.role_id = u.role_id
+        WHERE u.user_id = $1 AND u.is_active`, [req.user.user_id]);
+    const user = rows[0];
+    if (!user) return res.status(401).json({ error: 'invalid credentials' });
+
+    if (!(await verifyPassword(user.password_hash, parsed.data.current_password))) {
+      return res.status(401).json({ error: 'the current password is not correct' });
+    }
+    if (parsed.data.current_password === parsed.data.new_password) {
+      return res.status(400).json({ error: 'the new password must differ from the temporary one' });
+    }
+
+    await query(
+      `UPDATE app_user SET password_hash = $1, must_change_password = FALSE WHERE user_id = $2`,
+      [await hashPassword(parsed.data.new_password), user.user_id]);
+
+    res.locals.auditEntity = 'app_user';
+    res.locals.auditEntityId = user.user_id;
+    res.locals.auditAction = 'CHANGE_OWN_PASSWORD';
+
+    return res.json({
+      token: issueToken({ ...user, must_change_password: false }),
+      user: {
+        user_id: user.user_id, full_name: user.full_name, role: user.role_name,
+        zone: user.zone, must_change_password: false,
+      },
+    });
+  } catch (e) { return next(e); }
+});
+
+
 
 /* ======================= PORTAL : SERVICE REQUESTS ================== */
 
